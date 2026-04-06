@@ -1037,21 +1037,40 @@ def _parse_schema_product(data: dict) -> tuple[float, float] | None:
     if not isinstance(offers, dict):
         return None
 
+    # Detekce AggregateOffer – lowPrice/highPrice = rozsah variant (NE sleva!)
+    is_aggregate = "AggregateOffer" in str(offers.get("@type", ""))
+
     current = None
-    for key in ["price", "lowPrice"]:
-        val = offers.get(key)
+    if is_aggregate:
+        # AggregateOffer: lowPrice/highPrice = různé varianty (75g vs 2750g), NE sleva
+        # Hledáme jen explicitní slevu (price vs priceBeforeDiscount)
+        val = offers.get("price") or offers.get("lowPrice")
         current = parse_price(val)
-        if current:
-            break
+    else:
+        for key in ["price", "lowPrice"]:
+            val = offers.get(key)
+            current = parse_price(val)
+            if current:
+                break
     if not current:
         return None
 
     original = None
-    for key in ["highPrice", "priceBeforeDiscount"]:
-        val = offers.get(key)
-        original = parse_price(val)
-        if original:
-            break
+
+    if is_aggregate:
+        # U AggregateOffer: highPrice NENÍ původní cena, je to jen nejvyšší varianta
+        # Hledáme JEN explicitní slevu
+        for key in ["priceBeforeDiscount"]:
+            val = offers.get(key)
+            original = parse_price(val)
+            if original:
+                break
+    else:
+        for key in ["highPrice", "priceBeforeDiscount"]:
+            val = offers.get(key)
+            original = parse_price(val)
+            if original:
+                break
 
     if not original:
         specs = data.get("priceSpecification", []) or offers.get("priceSpecification", [])
